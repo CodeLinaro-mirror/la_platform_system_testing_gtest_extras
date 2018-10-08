@@ -15,6 +15,9 @@
  */
 
 #include <fcntl.h>
+#if !defined(__APPLE__)
+#include <malloc.h>
+#endif
 #include <signal.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -27,6 +30,7 @@
 #include <vector>
 
 #include <android-base/file.h>
+#include <android-base/strings.h>
 #include <android-base/test_utils.h>
 #include <gtest/gtest.h>
 
@@ -227,7 +231,7 @@ TEST_F(SystemTests, verify_pass_gtest_format_color) {
 TEST_F(SystemTests, verify_xfail_fail_expect_to_fail) {
   std::string expected =
       "[==========] Running 1 test from 1 test case (20 jobs).\n"
-      "[  XFAIL   ] DISABLED_SystemTestsXfail.xfail_fail (XX ms)\n"
+      "[    OK    ] DISABLED_SystemTestsXfail.xfail_fail (XX ms)\n"
       "file:(XX) Failure in test DISABLED_SystemTestsXfail.xfail_fail\n"
       "Expected equality of these values:\n"
       "  1\n"
@@ -241,7 +245,7 @@ TEST_F(SystemTests, verify_xfail_fail_expect_to_fail) {
 TEST_F(SystemTests, verify_xfail_fail_expect_to_fail_color) {
   std::string expected =
       "\x1B[0;32m[==========]\x1B[m Running 1 test from 1 test case (20 jobs).\n"
-      "\x1B[0;33m[  XFAIL   ]\x1B[m DISABLED_SystemTestsXfail.xfail_fail (XX ms)\n"
+      "\x1B[0;32m[    OK    ]\x1B[m DISABLED_SystemTestsXfail.xfail_fail (XX ms)\n"
       "file:(XX) Failure in test DISABLED_SystemTestsXfail.xfail_fail\n"
       "Expected equality of these values:\n"
       "  1\n"
@@ -272,11 +276,11 @@ TEST_F(SystemTests, verify_xfail_fail_expect_to_fail_gtest_format) {
 TEST_F(SystemTests, verify_xfail_pass_expect_to_fail) {
   std::string expected =
       "[==========] Running 1 test from 1 test case (20 jobs).\n"
-      "[  XPASS   ] DISABLED_SystemTestsXfail.xfail_pass (XX ms)\n"
+      "[  FAILED  ] DISABLED_SystemTestsXfail.xfail_pass (XX ms)\n"
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 0 tests.\n"
-      "[  XPASS   ] 1 test, listed below:\n"
-      "[  XPASS   ] DISABLED_SystemTestsXfail.xfail_pass\n"
+      "[   FAIL   ] 1 test should have failed, listed below:\n"
+      "[   FAIL   ] DISABLED_SystemTestsXfail.xfail_pass\n"
       "\n"
       " 1 SHOULD HAVE FAILED TEST\n";
   ASSERT_NO_FATAL_FAILURE(Verify("*.xfail_pass", expected, 1));
@@ -289,8 +293,8 @@ TEST_F(SystemTests, verify_xfail_pass_expect_to_fail_gtest_format) {
       "[  FAILED  ] DISABLED_SystemTestsXfail.xfail_pass (XX ms)\n"
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 0 tests.\n"
-      "[  XPASS   ] 1 test, listed below:\n"
-      "[  XPASS   ] DISABLED_SystemTestsXfail.xfail_pass\n"
+      "[   FAIL   ] 1 test should have failed, listed below:\n"
+      "[   FAIL   ] DISABLED_SystemTestsXfail.xfail_pass\n"
       "\n"
       " 1 SHOULD HAVE FAILED TEST\n";
   ASSERT_NO_FATAL_FAILURE(
@@ -300,11 +304,11 @@ TEST_F(SystemTests, verify_xfail_pass_expect_to_fail_gtest_format) {
 TEST_F(SystemTests, verify_xfail_pass_expect_to_fail_color) {
   std::string expected =
       "\x1B[0;32m[==========]\x1B[m Running 1 test from 1 test case (20 jobs).\n"
-      "\x1B[0;31m[  XPASS   ]\x1B[m DISABLED_SystemTestsXfail.xfail_pass (XX ms)\n"
+      "\x1B[0;31m[  FAILED  ]\x1B[m DISABLED_SystemTestsXfail.xfail_pass (XX ms)\n"
       "\x1B[0;32m[==========]\x1B[m 1 test from 1 test case ran. (XX ms total)\n"
       "\x1B[0;32m[   PASS   ]\x1B[m 0 tests.\n"
-      "\x1B[0;31m[  XPASS   ]\x1B[m 1 test, listed below:\n"
-      "\x1B[0;31m[  XPASS   ]\x1B[m DISABLED_SystemTestsXfail.xfail_pass\n"
+      "\x1B[0;31m[   FAIL   ]\x1B[m 1 test should have failed, listed below:\n"
+      "\x1B[0;31m[   FAIL   ]\x1B[m DISABLED_SystemTestsXfail.xfail_pass\n"
       "\n"
       " 1 SHOULD HAVE FAILED TEST\n";
   ASSERT_NO_FATAL_FAILURE(
@@ -331,7 +335,7 @@ TEST_F(SystemTests, verify_fail) {
       "SystemTests.DISABLED_fail exited with exitcode 1.\n"
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 0 tests.\n"
-      "[   FAIL   ] 1 test, listed below:\n"
+      "[   FAIL   ] 1 test failed, listed below:\n"
       "[   FAIL   ] SystemTests.DISABLED_fail\n"
       "\n"
       " 1 FAILED TEST\n";
@@ -349,7 +353,7 @@ TEST_F(SystemTests, verify_fail_color) {
       "SystemTests.DISABLED_fail exited with exitcode 1.\n"
       "\x1B[0;32m[==========]\x1B[m 1 test from 1 test case ran. (XX ms total)\n"
       "\x1B[0;32m[   PASS   ]\x1B[m 0 tests.\n"
-      "\x1B[0;31m[   FAIL   ]\x1B[m 1 test, listed below:\n"
+      "\x1B[0;31m[   FAIL   ]\x1B[m 1 test failed, listed below:\n"
       "\x1B[0;31m[   FAIL   ]\x1B[m SystemTests.DISABLED_fail\n"
       "\n"
       " 1 FAILED TEST\n";
@@ -369,7 +373,7 @@ TEST_F(SystemTests, verify_fail_gtest_format) {
       "[  FAILED  ] SystemTests.DISABLED_fail (XX ms)\n"
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 0 tests.\n"
-      "[   FAIL   ] 1 test, listed below:\n"
+      "[   FAIL   ] 1 test failed, listed below:\n"
       "[   FAIL   ] SystemTests.DISABLED_fail\n"
       "\n"
       " 1 FAILED TEST\n";
@@ -389,7 +393,7 @@ TEST_F(SystemTests, verify_fail_gtest_format_color) {
       "\x1B[0;31m[  FAILED  ]\x1B[m SystemTests.DISABLED_fail (XX ms)\n"
       "\x1B[0;32m[==========]\x1B[m 1 test from 1 test case ran. (XX ms total)\n"
       "\x1B[0;32m[   PASS   ]\x1B[m 0 tests.\n"
-      "\x1B[0;31m[   FAIL   ]\x1B[m 1 test, listed below:\n"
+      "\x1B[0;31m[   FAIL   ]\x1B[m 1 test failed, listed below:\n"
       "\x1B[0;31m[   FAIL   ]\x1B[m SystemTests.DISABLED_fail\n"
       "\n"
       " 1 FAILED TEST\n";
@@ -409,7 +413,7 @@ TEST_F(SystemTests, verify_deathtest_fail) {
       "SystemTestsDeathTest.DISABLED_death_fail exited with exitcode 1.\n"
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 0 tests.\n"
-      "[   FAIL   ] 1 test, listed below:\n"
+      "[   FAIL   ] 1 test failed, listed below:\n"
       "[   FAIL   ] SystemTestsDeathTest.DISABLED_death_fail\n"
       "\n"
       " 1 FAILED TEST\n";
@@ -427,7 +431,7 @@ TEST_F(SystemTests, verify_crash) {
 #endif
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 0 tests.\n"
-      "[   FAIL   ] 1 test, listed below:\n"
+      "[   FAIL   ] 1 test failed, listed below:\n"
       "[   FAIL   ] SystemTests.DISABLED_crash\n"
       "\n"
       " 1 FAILED TEST\n";
@@ -440,7 +444,7 @@ TEST_F(SystemTests, verify_warning_slow) {
       "[    OK    ] SystemTests.DISABLED_sleep5 (XX ms)\n"
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 1 test.\n"
-      "[   SLOW   ] 1 test, listed below:\n"
+      "[   SLOW   ] 1 test slow, listed below:\n"
       "[   SLOW   ] SystemTests.DISABLED_sleep5 (XX ms, exceeded 3000 ms)\n"
       "\n"
       " 1 SLOW TEST\n";
@@ -454,7 +458,7 @@ TEST_F(SystemTests, verify_warning_slow_color) {
       "\x1B[0;32m[    OK    ]\x1B[m SystemTests.DISABLED_sleep5 (XX ms)\n"
       "\x1B[0;32m[==========]\x1B[m 1 test from 1 test case ran. (XX ms total)\n"
       "\x1B[0;32m[   PASS   ]\x1B[m 1 test.\n"
-      "\x1B[0;33m[   SLOW   ]\x1B[m 1 test, listed below:\n"
+      "\x1B[0;33m[   SLOW   ]\x1B[m 1 test slow, listed below:\n"
       "\x1B[0;33m[   SLOW   ]\x1B[m SystemTests.DISABLED_sleep5 (XX ms, exceeded 3000 ms)\n"
       "\n"
       " 1 SLOW TEST\n";
@@ -470,7 +474,7 @@ TEST_F(SystemTests, verify_timeout) {
       "SystemTests.DISABLED_sleep_forever killed because of timeout at XX ms.\n"
       "[==========] 1 test from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 0 tests.\n"
-      "[ TIMEOUT  ] 1 test, listed below:\n"
+      "[ TIMEOUT  ] 1 test timed out, listed below:\n"
       "[ TIMEOUT  ] SystemTests.DISABLED_sleep_forever (stopped at XX ms)\n"
       "\n"
       " 1 TIMEOUT TEST\n";
@@ -488,9 +492,9 @@ TEST_F(SystemTests, verify_timeout_not_slow) {
       "SystemTests.DISABLED_sleep_forever killed because of timeout at XX ms.\n"
       "[==========] 2 tests from 1 test case ran. (XX ms total)\n"
       "[   PASS   ] 1 test.\n"
-      "[   SLOW   ] 1 test, listed below:\n"
+      "[   SLOW   ] 1 test slow, listed below:\n"
       "[   SLOW   ] SystemTests.DISABLED_sleep5 (XX ms, exceeded 1000 ms)\n"
-      "[ TIMEOUT  ] 1 test, listed below:\n"
+      "[ TIMEOUT  ] 1 test timed out, listed below:\n"
       "[ TIMEOUT  ] SystemTests.DISABLED_sleep_forever (stopped at XX ms)\n"
       "\n"
       " 1 SLOW TEST\n"
@@ -507,7 +511,7 @@ TEST_F(SystemTests, verify_timeout_color) {
       "SystemTests.DISABLED_sleep_forever killed because of timeout at XX ms.\n"
       "\x1B[0;32m[==========]\x1B[m 1 test from 1 test case ran. (XX ms total)\n"
       "\x1B[0;32m[   PASS   ]\x1B[m 0 tests.\n"
-      "\x1B[0;31m[ TIMEOUT  ]\x1B[m 1 test, listed below:\n"
+      "\x1B[0;31m[ TIMEOUT  ]\x1B[m 1 test timed out, listed below:\n"
       "\x1B[0;31m[ TIMEOUT  ]\x1B[m SystemTests.DISABLED_sleep_forever (stopped at XX ms)\n"
       "\n"
       " 1 TIMEOUT TEST\n";
@@ -576,13 +580,13 @@ TEST_F(SystemTests, verify_error_order) {
   ASSERT_FALSE(footer.empty()) << "Test output:\n" << raw_output_;
   ASSERT_EQ(
       "[   PASS   ] 4 tests.\n"
-      "[   SLOW   ] 2 tests, listed below:\n"
+      "[   SLOW   ] 2 tests slow, listed below:\n"
       "[   SLOW   ] SystemTests.DISABLED_all_slow_1 (XX ms, exceeded 2000 ms)\n"
       "[   SLOW   ] SystemTests.DISABLED_all_slow_2 (XX ms, exceeded 2000 ms)\n"
-      "[ TIMEOUT  ] 2 tests, listed below:\n"
+      "[ TIMEOUT  ] 2 tests timed out, listed below:\n"
       "[ TIMEOUT  ] SystemTests.DISABLED_all_timeout_1 (stopped at XX ms)\n"
       "[ TIMEOUT  ] SystemTests.DISABLED_all_timeout_2 (stopped at XX ms)\n"
-      "[   FAIL   ] 2 tests, listed below:\n"
+      "[   FAIL   ] 2 tests failed, listed below:\n"
       "[   FAIL   ] SystemTests.DISABLED_all_fail_1\n"
       "[   FAIL   ] SystemTests.DISABLED_all_fail_2\n"
       "\n"
@@ -978,6 +982,52 @@ TEST_F(SystemTests, verify_SIGQUIT_after_test_finish) {
   ASSERT_EQ(0, WEXITSTATUS(status));
 }
 
+TEST_F(SystemTests, verify_memory) {
+  // This test verifies that memory isn't leaking when running repeatedly.
+  std::vector<const char*> args{"--gtest_filter=*.DISABLED_memory",
+                                "--gtest_also_run_disabled_tests", "--gtest_repeat=400"};
+  ExecAndCapture(args);
+  ASSERT_EQ(0, exitcode_) << "Test output:\n" << raw_output_;
+  std::vector<std::string> lines(android::base::Split(raw_output_, "\n"));
+
+  constexpr static size_t kMaxLeakBytes = 32 * 1024;
+  size_t memory_iteration = 0;
+  size_t memory_start = 0;
+  size_t memory_last = 0;
+  for (auto& line : lines) {
+    size_t memory;
+    if (android::base::StartsWith(line, "Allocated ") &&
+        sscanf(line.c_str(), "Allocated %zu", &memory) == 1) {
+      if (memory_iteration == 0) {
+        memory_start = memory;
+      } else {
+        // Check the increase from the last loop.
+        if (memory > memory_last) {
+          ASSERT_GT(kMaxLeakBytes, memory - memory_last)
+              << "On iteration " << memory_iteration << " memory increased beyond expected value."
+              << std::endl
+              << "Last memory bytes " << memory_last << std::endl
+              << "Current memory bytes " << memory;
+        }
+        // Check the increase from the first loop.
+        if (memory > memory_start) {
+          ASSERT_GT(kMaxLeakBytes, memory - memory_start)
+              << "On iteration " << memory_iteration
+              << " total memory increased beyond expected value." << std::endl
+              << "Starting memory bytes " << memory_start << std::endl
+              << "Current memory bytes " << memory;
+        }
+      }
+      memory_last = memory;
+      memory_iteration++;
+    }
+  }
+  ASSERT_EQ(400, memory_iteration)
+      << "Did not find the expected 400 lines of memory data." << std::endl
+      << "Raw output:" << std::endl
+      << raw_output_;
+}
+
 // These tests are used by the verify_disabled tests.
 TEST_F(SystemTests, always_pass) {}
 
@@ -1154,6 +1204,19 @@ TEST(SystemTestsXml3, DISABLED_xml_1) {}
 
 TEST(SystemTestsXml3, DISABLED_xml_2) {
   ASSERT_EQ(1, 0);
+}
+
+TEST(SystemTestsMemory, DISABLED_memory) {
+#if !defined(__APPLE__)
+  struct mallinfo info = mallinfo();
+#if defined(__ANDROID__)
+  printf("Allocated %zu\n", info.uordblks);
+#else
+  printf("Allocated %d\n", info.uordblks);
+#endif
+#else
+  printf("Allocated 0\n");
+#endif
 }
 
 }  // namespace gtest_extras

@@ -203,11 +203,11 @@ void Isolate::LaunchTests() {
       exit(ChildProcessFn(tests_[cur_test_index_]));
     }
 
-    size_t run_index = running_indices_.top();
-    running_indices_.pop();
+    size_t run_index = running_indices_.back();
+    running_indices_.pop_back();
     Test* test = new Test(tests_[cur_test_index_], cur_test_index_, run_index, read_fd.release());
+    running_by_pid_.emplace(pid, test);
     running_[run_index] = test;
-    running_by_pid_[pid] = test;
     running_by_test_index_[cur_test_index_] = test;
 
     pollfd* pollfd = &running_pollfds_[run_index];
@@ -247,7 +247,8 @@ size_t Isolate::CheckTestsFinished() {
       LOG(FATAL) << "Pid " << pid << " was not spawned by the isolation framework.";
     }
 
-    Test* test = entry->second;
+    std::unique_ptr<Test>& test_ptr = entry->second;
+    Test* test = test_ptr.get();
     test->Stop();
 
     // Read any leftover data.
@@ -312,8 +313,8 @@ size_t Isolate::CheckTestsFinished() {
     }
     finished_tests++;
     size_t test_index = test->test_index();
-    finished_.emplace(test_index, test);
-    running_indices_.push(test->run_index());
+    finished_.emplace(test_index, test_ptr.release());
+    running_indices_.push_back(test->run_index());
 
     // Remove it from all of the running indices.
     size_t run_index = test->run_index();
@@ -337,7 +338,7 @@ size_t Isolate::CheckTestsFinished() {
 
 void Isolate::CheckTestsTimeout() {
   for (auto& entry : running_by_pid_) {
-    Test* test = entry.second;
+    Test* test = entry.second.get();
     if (test->result() == TEST_TIMEOUT) {
       continue;
     }
@@ -388,8 +389,9 @@ void Isolate::RunAllTests() {
   running_.resize(job_count);
   running_pollfds_.resize(job_count);
   memset(running_pollfds_.data(), 0, running_pollfds_.size() * sizeof(pollfd));
+  running_indices_.clear();
   for (size_t i = 0; i < job_count; i++) {
-    running_indices_.push(i);
+    running_indices_.push_back(i);
   }
 
   finished_.clear();
@@ -411,18 +413,16 @@ void Isolate::RunAllTests() {
   }
 }
 
-void Isolate::PrintResults(size_t total, const char* color, const char* prefix, const char* title,
-                           std::string* footer, bool (*match_func)(const Test&),
-                           void (*print_func)(const Options&, const Test&)) {
-  ColoredPrintf(color, prefix);
-  printf(" %s, listed below:\n", PluralizeString(total, " test").c_str());
+void Isolate::PrintResults(size_t total, const ResultsType& results, std::string* footer) {
+  ColoredPrintf(results.color, results.prefix);
+  printf(" %s %s, listed below:\n", PluralizeString(total, " test").c_str(), results.list_desc);
   for (const auto& entry : finished_) {
-    const Test* test = entry.second;
-    if (match_func(*test)) {
-      ColoredPrintf(color, prefix);
+    const Test* test = entry.second.get();
+    if (results.match_func(*test)) {
+      ColoredPrintf(results.color, results.prefix);
       printf(" %s", test->name().c_str());
-      if (print_func) {
-        print_func(options_, *test);
+      if (results.print_func != nullptr) {
+        results.print_func(options_, *test);
       }
       printf("\n");
     }
@@ -430,8 +430,52 @@ void Isolate::PrintResults(size_t total, const char* color, const char* prefix, 
   if (total < 10) {
     *footer += ' ';
   }
-  *footer += PluralizeString(total, (std::string(" ") + title + " TEST").c_str(), true) + '\n';
+  *footer +=
+      PluralizeString(total, (std::string(" ") + results.title + " TEST").c_str(), true) + '\n';
 }
+
+Isolate::ResultsType Isolate::SlowResults = {
+    .color = COLOR_YELLOW,
+    .prefix = "[   SLOW   ]",
+    .list_desc = "slow",
+    .title = "SLOW",
+    .match_func = [](const Test& test) { return test.slow(); },
+    .print_func =
+        [](const Options& options, const Test& test) {
+          printf(" (%" PRIu64 " ms, exceeded %" PRIu64 " ms)", test.RunTimeNs() / kNsPerMs,
+                 options.slow_threshold_ms());
+        },
+};
+
+Isolate::ResultsType Isolate::XpassFailResults = {
+    .color = COLOR_RED,
+    .prefix = "[   FAIL   ]",
+    .list_desc = "should have failed",
+    .title = "SHOULD HAVE FAILED",
+    .match_func = [](const Test& test) { return test.result() == TEST_XPASS; },
+    .print_func = nullptr,
+};
+
+Isolate::ResultsType Isolate::FailResults = {
+    .color = COLOR_RED,
+    .prefix = "[   FAIL   ]",
+    .list_desc = "failed",
+    .title = "FAILED",
+    .match_func = [](const Test& test) { return test.result() == TEST_FAIL; },
+    .print_func = nullptr,
+};
+
+Isolate::ResultsType Isolate::TimeoutResults = {
+    .color = COLOR_RED,
+    .prefix = "[ TIMEOUT  ]",
+    .list_desc = "timed out",
+    .title = "TIMEOUT",
+    .match_func = [](const Test& test) { return test.result() == TEST_TIMEOUT; },
+    .print_func =
+        [](const Options&, const Test& test) {
+          printf(" (stopped at %" PRIu64 " ms)", test.RunTimeNs() / kNsPerMs);
+        },
+};
 
 void Isolate::PrintFooter(uint64_t elapsed_time_ns) {
   ColoredPrintf(COLOR_GREEN, "[==========]");
@@ -449,33 +493,22 @@ void Isolate::PrintFooter(uint64_t elapsed_time_ns) {
   std::string footer;
   // Tests that ran slow.
   if (total_slow_tests_ != 0) {
-    PrintResults(total_slow_tests_, COLOR_YELLOW, "[   SLOW   ]", "SLOW", &footer,
-                 [](const Test& test) { return test.slow(); },
-                 [](const Options& options, const Test& test) {
-                   printf(" (%" PRIu64 " ms, exceeded %" PRIu64 " ms)", test.RunTimeNs() / kNsPerMs,
-                          options.slow_threshold_ms());
-                 });
+    PrintResults(total_slow_tests_, SlowResults, &footer);
   }
 
   // Tests that passed but should have failed.
   if (total_xpass_tests_ != 0) {
-    PrintResults(total_xpass_tests_, COLOR_RED, "[  XPASS   ]", "SHOULD HAVE FAILED", &footer,
-                 [](const Test& test) { return test.result() == TEST_XPASS; }, nullptr);
+    PrintResults(total_xpass_tests_, XpassFailResults, &footer);
   }
 
   // Tests that timed out.
   if (total_timeout_tests_ != 0) {
-    PrintResults(total_timeout_tests_, COLOR_RED, "[ TIMEOUT  ]", "TIMEOUT", &footer,
-                 [](const Test& test) { return test.result() == TEST_TIMEOUT; },
-                 [](const Options&, const Test& test) {
-                   printf(" (stopped at %" PRIu64 " ms)", test.RunTimeNs() / kNsPerMs);
-                 });
+    PrintResults(total_timeout_tests_, TimeoutResults, &footer);
   }
 
   // Tests that failed.
   if (total_fail_tests_ != 0) {
-    PrintResults(total_fail_tests_, COLOR_RED, "[   FAIL   ]", "FAILED", &footer,
-                 [](const Test& test) { return test.result() == TEST_FAIL; }, nullptr);
+    PrintResults(total_fail_tests_, FailResults, &footer);
   }
 
   if (!footer.empty()) {
@@ -585,7 +618,7 @@ void Isolate::WriteXmlResults(uint64_t elapsed_time_ns, time_t start_time) {
   std::vector<CaseInfo> cases;
   CaseInfo* info = nullptr;
   for (const auto& entry : finished_) {
-    const Test* test = entry.second;
+    const Test* test = entry.second.get();
     const std::string& case_name = test->case_name();
     if (test->result() == TEST_XFAIL) {
       // Skip XFAIL tests.
